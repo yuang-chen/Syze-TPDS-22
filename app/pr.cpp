@@ -1,165 +1,192 @@
+/**
+ * Author: Kartik Lakhotia
+           Sourav Pati
+ * Email id: klakhoti@usc.edu
+             spati@usc.edu
+ * Date: 27-Feb-2018
+ *
+ * Compute PageRank using Partition-centric graph processing
+ *
+ */
 
-#include <pthread.h>
-#include <time.h>
-#include <string>
-#include <boost/timer/timer.hpp>
-#include "option.hpp"
-#include "graph.hpp"
+#define DENSE
+//#undef DENSE
+//#define DUMP
+#define THREAD
+#undef THREAD
+unsigned int numIter = 0;
 
-using namespace boost::timer;
-using namespace boost::program_options;
+#include "../include/pcp.h"
+#include "../include/sort.hpp"
 
+float damping =0.15;
 
-class PR_Func{
-public:
-    VerxId size = 0;
-    Attr_t const damp = 0.85;
-    Attr_t* pr_src = nullptr; 
-    Attr_t* pr_dst = nullptr;
-    VerxId* out_degree = nullptr;
-
-    ~PR_Func() {
-        delete[] pr_src;
-        delete[] pr_dst;
-    }
-
-    PR_Func(VerxId* _out_degree, VerxId _size): out_degree(_out_degree), size(_size) {
-        pr_src = new Attr_t[size]();
-        pr_dst = new Attr_t[size]();
-        std::cout << "PCPM-based pagerank" << "\n";
-    }
-    ////////////////////////
-    //user-defined functions
-    ////////////////////////
-    inline float scatterFunc(VerxId vertex) // this one is used in both modes
+struct PR_F{
+    float* pageRank;
+    intV* deg;
+    PR_F(float* _pcurr, intV* _outDeg):pageRank(_pcurr), deg(_outDeg){}
+    inline float scatterFunc (intV node)
     {
-        return pr_src[vertex];
+        return pageRank[node];
     }
-    inline bool resetFunc(VerxId vertex) {
-        pr_dst[vertex] = 0;
-        return true;
-    }
-    inline bool gatherFunc(VerxId vertex, Attr_t update) {
-        pr_dst[vertex] += update;
-        return true;
-    }
-    inline bool applyFunc(VerxId vertex)
+#ifndef DENSE
+    inline bool initFunc(intV node)
     {
-        pr_dst[vertex] = 1 - damp + damp * pr_dst[vertex];
-        if (out_degree[vertex] > 0)
-            pr_dst[vertex] = pr_dst[vertex] / out_degree[vertex];        // pagerank[vertex] = 1 - damp + damp * pagerank[vertex];
+        pageRank[node]=0;
         return true;
     }
-    /////////////////
-    // push and pull
-    /////////////////
-     inline void pushFunc(VerxId dst, VerxId src) {
-        atomicAdd(&pr_dst[dst], pr_src[src]);
-    }   
-    inline void pullFunc(VerxId dst, VerxId src) {
-        pr_dst[dst] += pr_src[src];
+    inline bool gatherFunc (float updateVal, intV destId)
+    {
+        pageRank[destId] += updateVal;
+        return true;
     }
-    inline void swapFunc() {
-        std::swap(pr_src, pr_dst);
+    inline bool filterFunc(intV node)
+    {
+        pageRank[node] = ((damping) + (1-damping)*pageRank[node]);
+        if (deg[node]>0)
+            pageRank[node] = pageRank[node]/deg[node];
+        return true;
+    } 
+#else
+    inline void initFunc(intV node)
+    {
+        pageRank[node]=0;
     }
- 
-    ///////////////////
-    // helper functions
-    ///////////////////
-    void inline init(){  
-        #pragma omp for 
-        for (VerxId i=0; i < size; i++) {
-            pr_src[i] = out_degree[i] > 0? (Attr_t) 1 / out_degree[i]: 1.0;
-        }  
+    inline void gatherFunc (float updateVal, intV destId)
+    {
+        pageRank[destId] += updateVal;
     }
-    /////////////////////
-    // verify the pagerank value
-    //////////////////////
-    void verify(){
-        #pragma omp parallel for schedule(static, 1024)     
-        for(VerxId i = 0; i < size; i++) {
-            if(out_degree[i] > 0) 
-                pr_src[i] = pr_src[i] * out_degree[i];
-        }
-
-        std::vector<unsigned> idx(size, 0);
-        std::iota(idx.begin(), idx.end(), 0);
-        std::stable_sort(idx.begin(), idx.end(),
-           [this](size_t i1, size_t i2) {return pr_src[i1] > pr_src[i2];});
-        std::stable_sort(pr_src, pr_src + size, std::greater<Attr_t>());
-        auto filename = params::input_file.substr(params::input_file.find_last_of("/") + 1);
-        std::ofstream output("./logs/sorted_"+ filename +".txt");
-        if(!output.is_open()) {
-            std::cout << "cannot open txt file!" << std::endl;
-            exit(1);
-        }
-        // only write 100 values
-        for(int i = 0; i < 100; i++) 
-            output << std::left << std::setw(8) << idx[i] <<" "
-                   << std::right << std::setw(10) << pr_src[i] << '\n';
-        output.close();    
-        std::cout << "the sorted pagerank values are printed out in: ./logs/sorted_"
-                  << filename +".txt\n";  
+    inline void filterFunc(intV node)
+    {
+        pageRank[node] = ((damping) + (1-damping)*pageRank[node]);
+        if (deg[node]>0)
+            pageRank[node] = pageRank[node]/deg[node];
     }
+#endif
 };
 
-//////////////////////////////////////////
-//main function
-//////////////////////////////////////////
+
+
+
 int main(int argc, char** argv)
 {
-    options(argc, argv); 
-    Graph graph;
-    // Compute the preprocessing time
-    cpu_timer timer;
-    //////////////////////////////////////////
-    // read csr file
-    //////////////////////////////////////////
-    graph.load(params::input_file);
-
-    std::cout << std::fixed << std::setprecision(3);   
-    std::cout << "@" << timer.elapsed().wall/(1e9) << "s: graph is loaded from " << params::input_file << '\n';
-    std::cout << "restart the global timer\n";   
-    timer.start();
-
- //   graph.reorder(params::ralgo, params::dtype);
-    //////////////////////
-    //! Graph Partitioning
-    //////////////////////
-    graph.num_hot = 0;
-    graph.num_cold = 0;
-    graph.partition(params::dynamic);
-    std::cout << "@" << timer.elapsed().wall/(1e9) << "s: graph is cache-blocked" << '\n';
-
-    // //std::vector<float> pagerank(graph.num_vertices);
-    PR_Func pr(graph.out_degree, graph.num_vertices);
-    
-    std::cout << "--------program executing--------" << '\n';
-    float total_time = 0, current_time = 0;
-    #ifdef INFO
-    float block_time = 0, pull_time = 0, total_bt = 0, total_pt = 0;
-    #endif
-    ////////////////////////////////////////
-    // iterative execution
-    ////////////////////////////////////////
-   // graph.run(pr, params::rounds, params::iters);
-    cpu_timer iter_timer;
-    for(int r = 0; r < params::rounds; r++) {
-        pr.init();
-        timer.start();
-        for(int i = 0; i < params::iters; i++) {
-            graph.computeBlock(pr);
-            pr.swapFunc();
-        }
-     
-        current_time = timer.elapsed().wall/(1e9);
-   //    if(params::is_filter) graph.postloop(pr);
-        std::cout << "round " << r + 1 << ": " <<  params::input_file << ", processing time: " << current_time << '\n';
-        total_time += current_time;
+    graph<float> G;
+    initialize(&G, argc, argv);    
+    struct timespec pre_begin, pre_end;
+    if( clock_gettime(CLOCK_REALTIME, &pre_begin) == -1) { perror("clock gettime");}
+    initBin<float>(&G);    
+    if( clock_gettime( CLOCK_REALTIME, &pre_end) == -1 ) { perror("clock gettime");}
+    float pre_time = (pre_end.tv_sec - pre_begin.tv_sec)+ (int)(pre_end.tv_nsec - pre_begin.tv_nsec)/1e9;
+    printf("preprocessing@ %lf\n", pre_time);
+    float* pcurr = new float [G.numVertex]();
+    #pragma omp parallel for
+    for(int i=0;i<G.numVertex;i++){
+        if (G.outDeg[i] > 0)
+            pcurr[i] = 1.0/G.outDeg[i];
+        else
+            pcurr[i] = 1.0;
     }
-    std::cout << "average time: " << total_time / params::rounds 
-    << "\n----------------------\n";
-    if(params::verify) pr.verify();
-    return 0;
+#ifndef DENSE
+    intV* initFrontier = new intV [G.numVertex];
+#pragma omp parallel for
+    for (intV i=0; i<G.numVertex; i++)
+        initFrontier[i] = i;
+    loadFrontier (&G, initFrontier, G.numVertex);
+#endif
 
+    struct timespec start, end;
+    float time;
+    float sum_time = 0;
+    #ifdef THREAD
+    double smax = 0, smin = 0, saver=0, gmax=0, gmin=0, gaver=0;
+    double s_t_max, s_t_min, s_t_avr, g_t_max, g_t_min, g_t_avr;
+    double s_t_max_total = 0, s_t_min_total = 0, s_t_avr_total = 0, g_t_max_total = 0, g_t_min_total = 0, g_t_avr_total = 0;
+    #endif
+    int ctr =0;
+    while(ctr < G.rounds)
+    {
+         #ifdef THREAD
+            s_t_max_total = 0;
+            s_t_min_total = 0;
+            s_t_avr_total = 0; 
+            g_t_max_total = 0; 
+            g_t_min_total = 0; 
+            g_t_avr_total = 0; 
+        #endif
+        numIter = 0;
+        for(int i=0;i<G.numVertex;i++){
+            if (G.outDeg[i] > 0)
+                pcurr[i] = 1.0/G.outDeg[i];
+            else
+                pcurr[i] = 1.0;
+        }
+        if( clock_gettime(CLOCK_REALTIME, &start) == -1) { perror("clock gettime");}
+
+        while(numIter < MAX_ITER)
+        {
+         #ifndef THREAD
+            scatter_and_gather<float>(&G, PR_F(pcurr, G.outDeg));
+            #else
+           std::tie(s_t_max, s_t_min, s_t_avr, g_t_max, g_t_min, g_t_avr) = scatter_and_gather_thread<float>(&G, PR_F(pcurr, G.outDeg));
+
+            s_t_max_total += s_t_max;
+            s_t_min_total += s_t_min;
+            s_t_avr_total += s_t_avr; 
+            g_t_max_total += g_t_max; 
+            g_t_min_total += g_t_min; 
+            g_t_avr_total += g_t_avr;        
+            #endif
+            numIter++;
+        }
+
+        if( clock_gettime( CLOCK_REALTIME, &end) == -1 ) { perror("clock gettime");}
+        time = (end.tv_sec - start.tv_sec)+ (int)(end.tv_nsec - start.tv_nsec)/1e9;
+        printf("pr_dense, %d, %s, %lf\n",NUM_THREADS, input, time);
+         #ifdef THREAD
+                std::cout << "max, min, average time for scatter and gather threads (in ms): "
+                  <<  s_t_max_total/MAX_ITER  << " " <<  s_t_min_total/MAX_ITER  << " " <<  s_t_avr_total/MAX_ITER  << " " << 
+                   g_t_max_total/MAX_ITER  << " " <<  g_t_min_total/MAX_ITER  << " " <<  g_t_avr_total/MAX_ITER << std::endl;
+        
+        if(ctr!=0) {
+            smax+=s_t_max_total/numIter;
+            smin+=s_t_min_total/numIter;
+            saver+=s_t_avr_total/numIter;
+            gmax+=g_t_max_total/numIter;
+            gmin+=g_t_min_total/numIter;
+            gaver+=g_t_avr_total/numIter;
+        }
+        #endif
+        if(ctr!=0) 
+            sum_time += time;
+        ctr++;
+
+    }
+    std::cout << "The average running time of " << ctr << " rounds is: " << sum_time/(ctr-1) << std::endl;
+    #ifdef THREAD
+    std::cout << "THREAD: " << smax/(ctr-1) << " " << smin/(ctr-1) << " " << saver/(ctr-1)
+                << " " << gmax/(ctr-1) << " " << gmin/(ctr-1) << " " << gaver/(ctr-1) << '\n';
+    #endif
+    printf("\n");
+#ifdef DUMP
+    for (unsigned int i=0; i<G.numVertex; i++)
+    {
+        if (G.outDeg[i]>0)
+            pcurr[i] = pcurr[i]*G.outDeg[i];
+    }
+    mergeSortWOkey<float>(pcurr, 0, G.numVertex-1);
+    FILE* fdump = fopen("dumpPR.txt", "w");
+    if (fdump == NULL)
+    {
+        fputs("file error\n", stderr);
+        exit(1);
+    }
+    int printVertices = (G.numVertex>1000) ? 1000 : G.numVertex;
+    for (int i=0; i<printVertices; i++)
+        fprintf(fdump, "%lf\n", pcurr[i]);
+    fclose(fdump);
+#endif
+    return 0;
 }
+
+
+
