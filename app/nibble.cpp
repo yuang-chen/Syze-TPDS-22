@@ -1,16 +1,3 @@
-/**
- * Author: Kartik Lakhotia
-           Sourav Pati
- * Email id: klakhoti@usc.edu
-             spati@usc.edu
- * Date: 27-Feb-2018
- *
- * This code implements nibble algorithm
- * for computing probability distribution of 
- * a seeded random walk
- */
-
-
 #define DUMP
 #undef DUMP
 
@@ -60,14 +47,6 @@ struct PR_F{
 
 int main(int argc, char** argv)
 {
-
-    // for(int i = 0; i < 3; i++) { 
-    // boost::timer::cpu_timer timer;
-    // boost::timer::cpu_times times;
-    // timer.start();
-
-
-
     graph<float> G;
     initialize(&G, argc, argv);    
     initBin<float>(&G);    
@@ -92,10 +71,6 @@ int main(int argc, char** argv)
     int ctr =0;
     while(ctr < G.rounds)
     {
-    /* double activity_max = 0.0;
-        double activity_min = 100000;
-        double activity_avr = 0.0;
-    */
         resetFrontier(&G);
 
         for (intV i=0; i<initFrontierSize; i++)
@@ -106,14 +81,6 @@ int main(int argc, char** argv)
                 pscat[actVertex] = pcurr[actVertex]/(2*G.outDeg[actVertex]);
         }
         loadFrontier (&G, initFrontier, initFrontierSize);
-
-    // times = timer.elapsed();
-    // double pre_time = (double) times.wall/(1e9);
-    // std::cout << " preprocessing time (s): " << pre_time << std::endl; 
-    // }
-    
-      //  double s_t_max, s_t_min, s_t_avr, g_t_max, g_t_min, g_t_avr;
-      //  double s_t_max_total = 0, s_t_min_total = 0, s_t_avr_total = 0, g_t_max_total = 0, g_t_min_total = 0, g_t_avr_total = 0;
         numIter = 0;
 
         if( clock_gettime(CLOCK_REALTIME, &start) == -1) { perror("clock gettime");}
@@ -122,18 +89,6 @@ int main(int argc, char** argv)
         {
             scatter_and_gather<float>(&G, PR_F(pcurr, pscat, G.outDeg)); 
             numIter++;
-
-/*            std::tie(s_t_max, s_t_min, s_t_avr, g_t_max, g_t_min, g_t_avr) = scatter_and_gather<float>(&G, PR_F(pcurr, pscat, G.outDeg));   
-            numIter++;
-            if(s_t_max == 0 || s_t_min == 0 || g_t_max == 0 || g_t_min == 0)
-                break;
-           // std::cout << (double) G.frontierSize << std::endl;
-            s_t_max_total += s_t_max;
-            s_t_min_total += s_t_min;
-            s_t_avr_total += s_t_avr; 
-            g_t_max_total += g_t_max; 
-            g_t_min_total += g_t_min; 
-            g_t_avr_total += g_t_avr; */
         }   
 
         getFrontier(&G);
@@ -148,10 +103,6 @@ int main(int argc, char** argv)
         time = (end.tv_sec - start.tv_sec)+ (int)(end.tv_nsec - start.tv_nsec)/1e9;
         printf("appr, %d, %s, %lf\n",NUM_THREADS, argv[1], time);
         aver_time+=time;
-      /*  std::cout << "max, min, average time for scatter and gather threads: "
-                  <<  s_t_max_total/MAX_ITER  << " " <<  s_t_min_total/MAX_ITER  << " " <<  s_t_avr_total/MAX_ITER  << " " << 
-                   g_t_max_total/MAX_ITER  << " " <<  g_t_min_total/MAX_ITER  << " " <<  g_t_avr_total/MAX_ITER << std::endl;   
-                   */
         ctr++;
     }
     std::cout << "The average running time of " << ctr << " rounds is: " << aver_time/ctr << std::endl;

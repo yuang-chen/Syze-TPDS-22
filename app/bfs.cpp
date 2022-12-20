@@ -1,14 +1,3 @@
-/**
- * Author: Kartik Lakhotia
-           Sourav Pati
- * Email id: klakhoti@usc.edu
-             spati@usc.edu
- * Date: 27-Feb-2018
- *
- * This code implements work efficient BFS
- * 
- */
-
 unsigned int numIter = 0;
 
 //#define TEST
@@ -33,12 +22,6 @@ struct BFS_F{
 
     inline bool gatherFunc (intV updateVal, intV destId)
     {
-//        if((!visited[destId]) && (!(updateVal>>MSB_ROT)))
-//        {
-//            parent[destId] = updateVal;
-//            visited[destId] = true;
-//            return true;
-//        }
         if (!visited[destId]) //if destination vertex is not yet visited
         {
             parent[destId] = updateVal; //set its parent
@@ -111,30 +94,11 @@ int main(int argc, char** argv)
     struct timespec start, end;
     float time;
 
-    #ifdef THREAD
-    double smax = 0, smin = 0, saver=0, gmax=0, gmin=0, gaver=0;
-    double s_t_max, s_t_min, s_t_avr, g_t_max, g_t_min, g_t_avr;
-    double s_t_max_total = 0, s_t_min_total = 0, s_t_avr_total = 0, g_t_max_total = 0, g_t_min_total = 0, g_t_avr_total = 0;
-    #endif
-
     int ctr = 0;
     while(ctr < G.rounds){
         resetFrontier(&G);
-
         std::fill(parent, parent+n, 1<<MSB_ROT);
         std::fill(visited, visited+n, false);
-
-/*         double activity_max = 0.0;
-        double activity_min = 100000;
-        double activity_avr = 0.0; */
-         #ifdef THREAD
-            s_t_max_total = 0;
-            s_t_min_total = 0;
-            s_t_avr_total = 0; 
-            g_t_max_total = 0; 
-            g_t_min_total = 0; 
-            g_t_avr_total = 0; 
-        #endif
 
         for(int i=0;i<n;i++)
         {
@@ -152,20 +116,7 @@ int main(int argc, char** argv)
         numIter=0;
         while((G.frontierSize > 0))
         {    
-            #ifdef THREAD
-            std::tie(s_t_max, s_t_min, s_t_avr, g_t_max, g_t_min, g_t_avr) = scatter_and_gather_thread<intV>(&G, BFS_F(parent, visited));
-        //    activity_max = fmax(activity_max, (double) G.frontierSize/n);
-        //    activity_min = fmin(activity_min, (double) G.frontierSize/n);
-          //  activity_avr += (double) G.frontierSize/n;
-            s_t_max_total += s_t_max;
-            s_t_min_total += s_t_min;
-            s_t_avr_total += s_t_avr; 
-            g_t_max_total += g_t_max; 
-            g_t_min_total += g_t_min; 
-            g_t_avr_total += g_t_avr; 
-            #else
             scatter_and_gather<intV>(&G, BFS_F(parent, visited));
-            #endif
             numIter++;
         }   
 
@@ -173,38 +124,11 @@ int main(int argc, char** argv)
         time = (end.tv_sec - start.tv_sec)+ (int)(end.tv_nsec - start.tv_nsec)/1e9;
         if(ctr!=0) sum_time += time;
         printf("bfs, %d, %s, %lf, %d\n", NUM_THREADS, input, time, numIter);
-      
-        #ifdef THREAD
-      //  std::cout << "max min and average activity: " << activity_max << " " << activity_min << " " << activity_avr/numIter <<  std::endl;
-        std::cout << "max, min, average time for scatter and gather threads: "
-                <<  s_t_max_total/numIter  << " " <<  s_t_min_total/numIter  << " " <<  s_t_avr_total/numIter  << " " << 
-                g_t_max_total/numIter  << " " <<  g_t_min_total/numIter  << " " <<  g_t_avr_total/numIter << std::endl;
-        if(ctr!=0) {
-            smax+=s_t_max_total/numIter;
-            smin+=s_t_min_total/numIter;
-            saver+=s_t_avr_total/numIter;
-            gmax+=g_t_max_total/numIter;
-            gmin+=g_t_min_total/numIter;
-            gaver+=g_t_avr_total/numIter;
-        }
-        
-        #endif       
-
         ctr++; 
     }
-    /*   printf("average time for vertex %d: %lf\n", start_ver, sum_time/G.rounds);
 
-        vertex_time.push_back(sum_time/G.rounds);
-   }
-    float aver_time = 0;
-    for(auto t: vertex_time)
-        aver_time += t;
-    printf("average time for all: %lf\n", aver_time/start_vertex.size());*/
     std::cout << "The average running time of " << ctr << " rounds is: " << sum_time/(ctr-1) <<   std::endl;
-    #ifdef THREAD
-    std::cout << "THREAD: " << smax/(ctr-1) << " " << smin/(ctr-1) << " " << saver/(ctr-1)
-                << " " << gmax/(ctr-1) << " " << gmin/(ctr-1) << " " << gaver/(ctr-1) << '\n';
-    #endif
+
     printf("\n");
     return 0;
 }

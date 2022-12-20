@@ -13,7 +13,7 @@ endif
 CXX     = g++
 CPPFLAGS = -O3 -std=c++11 -fopenmp -mavx -w $(INTE) $(INTV) -march=native -m64 -ftree-vectorize
 DEBUG= -g -O0 -Wall  -std=c++11 -fopenmp -mavx -w 
-LDFLAGS = -fopenmp -lpthread  -lboost_timer -lboost_system -lboost_program_options 
+LDFLAGS = -fopenmp -lpthread  
 INC:=./include/
 APP:=./app
 
