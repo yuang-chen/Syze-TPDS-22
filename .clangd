@@ -1,0 +1,9 @@
+CompileFlags:
+  Add: [-xc++, -std=c++20, -Wall, -Wno-missing-prototypes]
+
+Diagnostics:
+  ClangTidy:
+    Add: [performance*, modernize*, readability*]
+    Remove: [modernize-use-trailing-return-type]
+Index:
+  Background: Build

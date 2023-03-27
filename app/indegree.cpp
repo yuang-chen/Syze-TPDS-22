@@ -8,51 +8,24 @@ unsigned int numIter = 0;
 #include "../include/pcp.h"
 #include "../include/sort.hpp"
 
-float damping = 0.15;
-
-struct PR_F
+struct INDEG_F
 {
-  float* pageRank;
-  intV*  deg;
-  PR_F(float* _pcurr, intV* _outDeg) : pageRank(_pcurr), deg(_outDeg) {}
+  intV* sum;
+  INDEG_F(intV* _sum) : sum(_sum) {}
   inline float scatterFunc(intV node)
   {
-    return pageRank[node];
+    return sum[node];
   }
-#ifndef DENSE
-  inline bool initFunc(intV node)
-  {
-    pageRank[node] = 0;
-    return true;
-  }
-  inline bool gatherFunc(float updateVal, intV destId)
-  {
-    pageRank[destId] += updateVal;
-    return true;
-  }
-  inline bool filterFunc(intV node)
-  {
-    pageRank[node] = ((damping) + (1 - damping) * pageRank[node]);
-    if(deg[node] > 0)
-      pageRank[node] = pageRank[node] / deg[node];
-    return true;
-  }
-#else
+
   inline void initFunc(intV node)
   {
-    pageRank[node] = 0;
+    sum[node] = 0;
   }
-  inline void gatherFunc(float updateVal, intV destId)
+  inline void gatherFunc(intV updateVal, intV destId)
   {
-    pageRank[destId] += updateVal;
+    sum[destId] += updateVal;
   }
-  inline void filterFunc(intV node)
-  {
-    pageRank[node] = ((damping) + (1 - damping) * pageRank[node]);
-    if(deg[node] > 0)
-      pageRank[node] = pageRank[node] / deg[node];
-  }
-#endif
+  inline void filterFunc(intV node) {}
 };
 
 int main(int argc, char** argv)
@@ -72,31 +45,18 @@ int main(int argc, char** argv)
   float pre_time =
       (pre_end.tv_sec - pre_begin.tv_sec) + ( int )(pre_end.tv_nsec - pre_begin.tv_nsec) / 1e9;
   printf("preprocessing@ %lf\n", pre_time);
-  float* pcurr = new float[G.numVertex]();
-#pragma omp parallel for
-  for(int i = 0; i < G.numVertex; i++)
-  {
-    if(G.outDeg[i] > 0)
-      pcurr[i] = 1.0 / G.outDeg[i];
-    else
-      pcurr[i] = 1.0;
-  }
+  intV* sum = new intV[G.numVertex]();
 
   struct timespec start, end;
   float           time;
   float           sum_time = 0;
 
-  int ctr = 0;
+  INDEG_F indeg_f(sum);
+  int     ctr = 0;
   while(ctr < G.rounds)
   {
     numIter = 0;
-    for(int i = 0; i < G.numVertex; i++)
-    {
-      if(G.outDeg[i] > 0)
-        pcurr[i] = 1.0 / G.outDeg[i];
-      else
-        pcurr[i] = 1.0;
-    }
+    std::fill(sum, sum + G.numVertex, 1);
     if(clock_gettime(CLOCK_REALTIME, &start) == -1)
     {
       perror("clock gettime");
@@ -104,7 +64,8 @@ int main(int argc, char** argv)
 
     while(numIter < MAX_ITER)
     {
-      scatter_and_gather<float>(&G, PR_F(pcurr, G.outDeg));
+      std::fill(sum, sum + G.numVertex, 1);
+      scatter_and_gather<float>(&G, indeg_f);
       numIter++;
     }
 
@@ -123,13 +84,9 @@ int main(int argc, char** argv)
 
   printf("\n");
 #ifdef DUMP
-  for(unsigned int i = 0; i < G.numVertex; i++)
-  {
-    if(G.outDeg[i] > 0)
-      pcurr[i] = pcurr[i] * G.outDeg[i];
-  }
-  mergeSortWOkey<float>(pcurr, 0, G.numVertex - 1);
-  FILE* fdump = fopen("dumpPR.txt", "w");
+
+  mergeSortWOkey<intV>(sum, 0, G.numVertex - 1);
+  FILE* fdump = fopen("dumpIN.txt", "w");
   if(fdump == NULL)
   {
     fputs("file error\n", stderr);
@@ -137,10 +94,11 @@ int main(int argc, char** argv)
   }
   int printVertices = (G.numVertex > 1000) ? 1000 : G.numVertex;
   for(int i = 0; i < printVertices; i++)
-    fprintf(fdump, "%lf\n", pcurr[i]);
+    fprintf(fdump, "%d\n", sum[i]);
   fclose(fdump);
-  std::cout << "result is dumped into dumpPR.txt" << '\n';
+  std::cout << "result is dumped into dumpIN.txt" << '\n';
 
 #endif
+  delete[] sum;
   return 0;
 }

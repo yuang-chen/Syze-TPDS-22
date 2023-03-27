@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "g++ - Build and debug active file",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "-d",
+        "/Users/yac/Code/data/wiki.mix",
+        "-f",
+        "1"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PATH": "${env:PATH}:${command:cmake.getLaunchTargetDirectory}"
+      },
+      "console": "externalTerminal"
+    }
+  ]
+}

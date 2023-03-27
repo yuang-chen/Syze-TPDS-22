@@ -1,0 +1,32 @@
+{
+  "cmake.configureSettings": {
+    "CMAKE_TOOLCHAIN_FILE": "/Users/yac/Programs/vcpkg/scripts/buildsystems/vcpkg.cmake",
+    "VCPKG_TARGET_TRIPLET": "arm64-osx"
+  },
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "cmake.configureOnEdit": false,
+  "cmake.configureOnOpen": true,
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": true,
+  "editor.formatOnType": true,
+  "clangd.checkUpdates": true,
+  "clangd.path": "/opt/homebrew/opt/llvm/bin/clangd",
+  "clangd.arguments": [
+    "--query-driver=/opt/homebrew/bin/g++-12",
+    "--background-index",
+    "--compile-commands-dir=build",
+    "--log=verbose",
+    "--pretty",
+    "--all-scopes-completion",
+    "--completion-style=detailed",
+    "--cross-file-rename",
+    "--header-insertion=iwyu",
+    "--header-insertion-decorators",
+    "--background-index",
+    "--clang-tidy",
+    "--enable-config",
+    "-j=20",
+    "--pch-storage=memory",
+    "--function-arg-placeholders=false"
+  ]
+}
